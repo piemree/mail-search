@@ -10,6 +10,9 @@ var imap = new Imap({
     tls: true
 });
 
+// Maksimum dinleyici sayısını artırın
+imap.setMaxListeners(0);
+
 function openInbox() {
     return new Promise((resolve, reject) => {
         imap.openBox('INBOX', true, (err, box) => {
@@ -32,21 +35,34 @@ function fetchMailBody(seqno) {
         let mailBody = '';
         let mail = imap.seq.fetch(seqno, { bodies: 'TEXT' });
 
-        mail.on('message', function (msg, seqno) {
-            msg.on('body', function (stream, info) {
+        const onMessage = function (msg) {
+            const onBody = function (stream) {
                 stream.on('data', function (chunk) {
                     mailBody += chunk.toString('utf8');
                 });
                 stream.once('end', function () {
-                    let decodedBody = quotedPrintable.decode(mailBody);
-                    let utf8Body = utf8.decode(decodedBody);
-                    resolve(utf8Body);
+                    try {
+                        let decodedBody = quotedPrintable.decode(mailBody);
+                        let utf8Body = utf8.decode(decodedBody);
+                        resolve(utf8Body);
+                    } catch (error) {
+                        reject(error);
+                    }
                 });
-            });
-        });
+            };
 
+            msg.on('body', onBody);
+            msg.once('end', function () {
+                msg.removeListener('body', onBody);
+            });
+        };
+
+        mail.on('message', onMessage);
         mail.once('error', function (err) {
             reject(err);
+        });
+        mail.once('end', function () {
+            mail.removeListener('message', onMessage);
         });
     });
 }
@@ -66,14 +82,16 @@ function fetchMails(mailTo, limit = 100) {
 
         let fetchPromises = []; // Fetch promises array
 
-        f.on('message', function (msg, seqno) {
-            msg.on('body', function (stream, info) {
-                let buffer = '';
+        const onMessage = function (msg, seqno) {
+            let buffer = '';
+
+            const onBody = function (stream) {
                 stream.on('data', function (chunk) {
                     buffer += chunk.toString('utf8');
                 });
                 stream.once('end', async function () {
                     let parsedHeader = Imap.parseHeader(buffer);
+                    // console.log('Parsed header: ', parsedHeader);
                     if (parsedHeader.to && parsedHeader.to.join().includes(mailTo)) {
                         let fetchPromise = fetchMailBody(seqno).then(utf8Body => {
                             emails.push({
@@ -86,20 +104,26 @@ function fetchMails(mailTo, limit = 100) {
                         fetchPromises.push(fetchPromise); // Add fetch promise to the array
                     }
                 });
-            });
-        });
+            };
 
+            msg.on('body', onBody);
+            msg.once('end', function () {
+                msg.removeListener('body', onBody);
+            });
+        };
+
+        f.on('message', onMessage);
         f.once('error', function (err) {
             console.log('Fetch error: ' + err);
             reject(err);
         });
-
         f.once('end', function () {
             Promise.all(fetchPromises).then(() => {
                 resolve(emails);
             }).catch(err => {
                 reject(err);
             });
+            f.removeListener('message', onMessage);
         });
     });
 }
@@ -119,5 +143,3 @@ async function watchMails(mailTo, limit) {
 }
 
 export default watchMails;
-
-
