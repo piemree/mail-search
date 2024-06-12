@@ -78,6 +78,10 @@ export default function Home() {
                 {mail.header.from}
               </div>
               <div>
+                <span className="font-bold">To: </span>
+                {mail.header.to}
+              </div>
+              <div>
                 <span className="font-bold">Subject: </span>
                 {mail.header.subject}
               </div>

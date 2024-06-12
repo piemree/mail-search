@@ -91,8 +91,8 @@ function fetchMails(mailTo, limit = 100) {
                 });
                 stream.once('end', async function () {
                     let parsedHeader = Imap.parseHeader(buffer);
-                    // console.log('Parsed header: ', parsedHeader);
-                    if (parsedHeader.to && parsedHeader.to.join().includes(mailTo)) {
+
+                    if (parsedHeader.to && parsedHeader?.to?.join()?.toLocaleLowerCase().includes(mailTo?.toLocaleLowerCase())) {
                         let fetchPromise = fetchMailBody(seqno).then(utf8Body => {
                             emails.push({
                                 header: parsedHeader,
